@@ -1,0 +1,550 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101522">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Chirishian's Dashboard</title>
+
+<style>
+:root {
+  --bg:#0b1020;
+  --panel:#172238;
+  --text:#ffffff;
+  --muted:#aab6cc;
+  --accent:#7c9cff;
+}
+
+* { box-sizing:border-box; }
+
+body {
+  margin:0;
+  padding:20px;
+  background:var(--bg);
+  color:var(--text);
+  font-family:Arial,sans-serif;
+}
+
+header {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:12px;
+  margin-bottom:25px;
+}
+
+h1 { font-size:22px; }
+
+button {
+  background:var(--accent);
+  color:#101522;
+  border:0;
+  padding:11px 16px;
+  border-radius:10px;
+  cursor:pointer;
+  font-weight:bold;
+}
+
+.panel {
+  background:var(--panel);
+  padding:20px;
+  border-radius:18px;
+  margin-bottom:18px;
+}
+
+.clock {
+  font-size:55px;
+  font-weight:bold;
+}
+
+.weather {
+  font-size:30px;
+}
+
+.grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  gap:12px;
+}
+
+.app {
+  background:var(--panel);
+  padding:18px;
+  border-radius:15px;
+  text-align:center;
+  text-decoration:none;
+  color:white;
+  font-size:16px;
+}
+
+.app span {
+  display:block;
+  font-size:32px;
+  margin-bottom:10px;
+}
+
+input,textarea {
+  width:100%;
+  padding:12px;
+  margin:7px 0;
+  border-radius:9px;
+  border:1px solid #40506b;
+  background:#0b1020;
+  color:white;
+}
+
+textarea { min-height:100px; }
+
+.small {
+  color:var(--muted);
+  font-size:13px;
+}
+
+.device {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  padding:12px;
+  margin-top:8px;
+  background:#0b1020;
+  border-radius:10px;
+}
+
+@media(max-width:500px) {
+  body { padding:12px; }
+  .clock { font-size:43px; }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>CHIRISHIAN'S DASHBOARD</h1>
+  <div>
+    <button onclick="manageApps()">＋ Apps</button>
+    <button onclick="settings()">⚙ Settings</button>
+  </div>
+</header>
+
+<section class="panel">
+  <h2 id="welcome">Welcome Home</h2>
+  <div class="clock" id="clock">--:--</div>
+  <div id="date"></div>
+</section>
+
+<section class="panel">
+  <h2>Montréal Weather</h2>
+  <div class="weather" id="temperature">Loading...</div>
+  <div id="weatherDescription" class="small"></div>
+</section>
+
+<h2>My Applications</h2>
+<div class="grid" id="apps"></div>
+
+<section class="panel">
+  <h2>Smart Home Controls</h2>
+  <p class="small">
+    Connect your Home Assistant server to control supported devices.
+  </p>
+
+  <input id="haUrl"
+    placeholder="Home Assistant address">
+
+  <input id="haToken" type="password"
+    placeholder="Long-lived access token">
+
+  <button onclick="connectHA()">Connect Home Assistant</button>
+  <button onclick="loadDevices()">Refresh devices</button>
+
+  <p id="haStatus" class="small">Not connected.</p>
+  <div id="devices"></div>
+</section>
+
+<section class="panel">
+  <h2>Voice Control</h2>
+  <input id="voiceCommand"
+    placeholder="Example: turn on living room lights">
+
+  <button onclick="listen()">🎙 Speak</button>
+  <button onclick="sendCommand()">Send command</button>
+  <p id="voiceStatus" class="small"></p>
+</section>
+
+<section class="panel">
+  <h2>AI Assistant</h2>
+  <p class="small">
+    Connect a private AI server to use this feature.
+  </p>
+  <input id="aiEndpoint"
+    placeholder="Your private HTTPS AI endpoint">
+  <textarea id="aiMessage"
+    placeholder="Ask your assistant something..."></textarea>
+  <button onclick="askAI()">Send</button>
+  <p id="aiAnswer"></p>
+</section>
+
+<section class="panel">
+  <h2>My Notes</h2>
+  <textarea id="notes"
+    placeholder="Write your reminders here..."></textarea>
+  <button onclick="saveNotes()">Save Notes</button>
+</section>
+
+<script>
+const defaultApps = [
+  ["YouTube","▶️","https://youtube.com"],
+  ["Google Calendar","📅","https://calendar.google.com"],
+  ["Blink","📷","https://www.blinkforhome.com/"],
+  ["Roku","📺","https://www.roku.com/"],
+  ["Amazon Alexa","🗣️","https://alexa.amazon.com/"],
+  ["Spotify","🎵","https://open.spotify.com/"],
+  ["Home Assistant","🏠","http://homeassistant.local:8123"]
+];
+
+let apps = JSON.parse(localStorage.getItem("apps")) || defaultApps;
+
+function updateClock() {
+  const now = new Date();
+
+  document.getElementById("clock").textContent =
+    now.toLocaleTimeString([], {
+      hour:"2-digit", minute:"2-digit"
+    });
+
+  document.getElementById("date").textContent =
+    now.toLocaleDateString([], {
+      weekday:"long",
+      year:"numeric",
+      month:"long",
+      day:"numeric"
+    });
+}
+
+setInterval(updateClock,1000);
+updateClock();
+
+function displayApps() {
+  const container = document.getElementById("apps");
+  container.innerHTML = "";
+
+  apps.forEach(app => {
+    const link = document.createElement("a");
+    link.className = "app";
+    link.href = app[2];
+    link.target = "_blank";
+    link.rel = "noopener";
+
+    const icon = document.createElement("span");
+    icon.textContent = app[1];
+
+    const name = document.createElement("strong");
+    name.textContent = app[0];
+
+    link.append(icon,name);
+    container.appendChild(link);
+  });
+}
+
+displayApps();
+
+function manageApps() {
+  const name = prompt("Application name:");
+  if (!name) return;
+
+  const url = prompt("Application website URL:");
+  if (!url) return;
+
+  try {
+    const parsed = new URL(url);
+    if (!["https:","http:"].includes(parsed.protocol)) {
+      alert("Use an HTTP or HTTPS link.");
+      return;
+    }
+  } catch {
+    alert("Enter a valid website link.");
+    return;
+  }
+
+  const icon = prompt("Choose an emoji icon:") || "📱";
+
+  apps.push([name,icon,url]);
+  localStorage.setItem("apps",JSON.stringify(apps));
+  displayApps();
+}
+
+function settings() {
+  const message = prompt("Your welcome message:");
+  if (message) {
+    document.getElementById("welcome").textContent = message;
+    localStorage.setItem("welcome",message);
+  }
+
+  const colour = prompt("Enter a colour, for example #7c9cff:");
+  if (colour && /^#[0-9a-f]{6}$/i.test(colour)) {
+    document.documentElement.style.setProperty("--accent",colour);
+    localStorage.setItem("accent",colour);
+  }
+}
+
+const savedWelcome = localStorage.getItem("welcome");
+if (savedWelcome) {
+  document.getElementById("welcome").textContent = savedWelcome;
+}
+
+const savedAccent = localStorage.getItem("accent");
+if (savedAccent) {
+  document.documentElement.style.setProperty("--accent",savedAccent);
+}
+
+async function loadWeather() {
+  try {
+    const url =
+      "https://api.open-meteo.com/v1/forecast" +
+      "?latitude=45.5019&longitude=-73.5674" +
+      "&current=temperature_2m,weather_code" +
+      "&timezone=America%2FToronto";
+
+    const response = await fetch(url);
+    if (!response.ok) throw Error("Weather unavailable");
+
+    const data = await response.json();
+    const current = data.current;
+
+    document.getElementById("temperature").textContent =
+      Math.round(current.temperature_2m) + "°C";
+
+    document.getElementById("weatherDescription").textContent =
+      "Weather code: " + current.weather_code;
+
+  } catch(error) {
+    document.getElementById("temperature").textContent =
+      "Weather unavailable";
+  }
+}
+
+loadWeather();
+
+let haUrl = localStorage.getItem("haUrl") || "";
+let haToken = localStorage.getItem("haToken") || "";
+
+document.getElementById("haUrl").value = haUrl;
+
+async function haRequest(path,options={}) {
+  if (!haUrl || !haToken) {
+    throw Error("Enter your Home Assistant details first.");
+  }
+
+  const response = await fetch(
+    haUrl.replace(/\/+$/,"") + "/api/" + path,
+    {
+      ...options,
+      headers:{
+        Authorization:"Bearer " + haToken,
+        "Content-Type":"application/json",
+        ...(options.headers || {})
+      }
+    }
+  );
+
+  if (!response.ok) throw Error("Home Assistant error " + response.status);
+  return response.json();
+}
+
+async function connectHA() {
+  haUrl = document.getElementById("haUrl").value.trim();
+  haToken = document.getElementById("haToken").value.trim();
+
+  localStorage.setItem("haUrl",haUrl);
+  localStorage.setItem("haToken",haToken);
+
+  try {
+    await haRequest("");
+    document.getElementById("haStatus").textContent =
+      "Connected successfully!";
+    loadDevices();
+  } catch(error) {
+    document.getElementById("haStatus").textContent = error.message;
+  }
+}
+
+async function loadDevices() {
+  try {
+    const states = await haRequest("states");
+
+    const supported = states.filter(device =>
+      ["light.","switch.","fan.","cover."].some(prefix =>
+        device.entity_id.startsWith(prefix)
+      )
+    );
+
+    const container = document.getElementById("devices");
+    container.innerHTML = "";
+
+    supported.forEach(device => {
+      const row = document.createElement("div");
+      row.className = "device";
+
+      const name = document.createElement("span");
+      name.textContent =
+        device.attributes.friendly_name || device.entity_id;
+
+      const button = document.createElement("button");
+      button.textContent =
+        device.state === "on" ? "Turn Off" : "Turn On";
+
+      button.onclick = () =>
+        toggleDevice(device.entity_id,device.state);
+
+      row.append(name,button);
+      container.appendChild(row);
+    });
+
+    document.getElementById("haStatus").textContent =
+      supported.length + " devices found.";
+
+  } catch(error) {
+    document.getElementById("haStatus").textContent = error.message;
+  }
+}
+
+async function toggleDevice(id,state) {
+  const domain = id.split(".")[0];
+  const service = state === "on" ? "turn_off" : "turn_on";
+
+  try {
+    await haRequest("services/" + domain + "/" + service,{
+      method:"POST",
+      body:JSON.stringify({entity_id:id})
+    });
+
+    loadDevices();
+  } catch(error) {
+    alert(error.message);
+  }
+}
+
+async function sendCommand() {
+  const command =
+    document.getElementById("voiceCommand").value.toLowerCase();
+
+  const match = command.match(
+    /turn (on|off) (?:the )?(.+)/
+  );
+
+  if (!match) {
+    document.getElementById("voiceStatus").textContent =
+      "Try: turn on living room lights";
+    return;
+  }
+
+  try {
+    const states = await haRequest("states");
+    const wanted = match[2];
+
+    const device = states.find(item =>
+      ["light.","switch."].some(prefix =>
+        item.entity_id.startsWith(prefix)
+      ) &&
+      (
+        (item.attributes.friendly_name || item.entity_id)
+          .toLowerCase().includes(wanted)
+      )
+    );
+
+    if (!device) throw Error("Device not found.");
+
+    const domain = device.entity_id.split(".")[0];
+    const service = match[1] === "on" ? "turn_on" : "turn_off";
+
+    await haRequest("services/" + domain + "/" + service,{
+      method:"POST",
+      body:JSON.stringify({entity_id:device.entity_id})
+    });
+
+    document.getElementById("voiceStatus").textContent =
+      "Command sent.";
+
+    loadDevices();
+
+  } catch(error) {
+    document.getElementById("voiceStatus").textContent =
+      error.message;
+  }
+}
+
+function listen() {
+  const Speech = window.SpeechRecognition ||
+                 window.webkitSpeechRecognition;
+
+  if (!Speech) {
+    alert("Voice recognition is not supported. Type your command instead.");
+    return;
+  }
+
+  const recognition = new Speech();
+  recognition.lang = "en-CA";
+
+  recognition.onresult = event => {
+    document.getElementById("voiceCommand").value =
+      event.results[0][0].transcript;
+
+    sendCommand();
+  };
+
+  recognition.start();
+}
+
+async function askAI() {
+  const endpoint =
+    document.getElementById("aiEndpoint").value.trim();
+
+  const message =
+    document.getElementById("aiMessage").value.trim();
+
+  if (!endpoint.startsWith("https://") || !message) {
+    alert("Enter an HTTPS endpoint and a message.");
+    return;
+  }
+
+  try {
+    const response = await fetch(endpoint,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({message})
+    });
+
+    if (!response.ok) throw Error("AI server error.");
+
+    const data = await response.json();
+
+    document.getElementById("aiAnswer").textContent =
+      data.reply || data.response || data.message ||
+      "No reply received.";
+
+  } catch(error) {
+    document.getElementById("aiAnswer").textContent =
+      error.message;
+  }
+}
+
+function saveNotes() {
+  const notes = document.getElementById("notes").value;
+  localStorage.setItem("notes",notes);
+  alert("Notes saved!");
+}
+
+document.getElementById("notes").value =
+  localStorage.getItem("notes") || "";
+
+if ("serviceWorker" in navigator &&
+    location.protocol !== "file:") {
+  navigator.serviceWorker.register("./sw.js");
+}
+</script>
+</body>
+</html>
